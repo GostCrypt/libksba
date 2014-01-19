@@ -660,213 +660,6 @@ get_stringbuf (struct stringbuf *sb)
   return p;
 }
 
-
-/* Assume that der is a buffer of length DERLEN with a DER encoded
- Asn.1 structure like this:
-
-  keyInfo ::= SEQUENCE {
-                 SEQUENCE {
-                    algorithm    OBJECT IDENTIFIER,
-                    parameters   ANY DEFINED BY algorithm OPTIONAL }
-                 publicKey  BIT STRING }
-
-  The function parses this structure and create a SEXP suitable to be
-  used as a public key in Libgcrypt.  The S-Exp will be returned in a
-  string which the caller must free.
-
-  We don't pass an ASN.1 node here but a plain memory block.  */
-
-gpg_error_t
-_ksba_keyinfo_to_sexp (const unsigned char *der, size_t derlen,
-                       ksba_sexp_t *r_string)
-{
-  gpg_error_t err;
-  int c;
-  size_t nread, off, len, parm_off, parm_len;
-  int parm_type;
-  char *parm_oid = NULL;
-  int algoidx;
-  int is_bitstr;
-  const unsigned char *parmder = NULL;
-  size_t parmderlen = 0;
-  const unsigned char *ctrl;
-  const char *elem;
-  struct stringbuf sb;
-
-  *r_string = NULL;
-
-  /* check the outer sequence */
-  if (!derlen)
-    return gpg_error (GPG_ERR_INV_KEYINFO);
-  c = *der++; derlen--;
-  if ( c != 0x30 )
-    return gpg_error (GPG_ERR_UNEXPECTED_TAG); /* not a SEQUENCE */
-  TLV_LENGTH(der);
-  /* and now the inner part */
-  err = get_algorithm (1, der, derlen, &nread, &off, &len, &is_bitstr,
-                       &parm_off, &parm_len, &parm_type);
-  if (err)
-    return err;
-
-  /* look into our table of supported algorithms */
-  for (algoidx=0; pk_algo_table[algoidx].oid; algoidx++)
-    {
-      if ( len == pk_algo_table[algoidx].oidlen
-           && !memcmp (der+off, pk_algo_table[algoidx].oid, len))
-        break;
-    }
-  if (!pk_algo_table[algoidx].oid)
-    return gpg_error (GPG_ERR_UNKNOWN_ALGORITHM);
-  if (!pk_algo_table[algoidx].supported)
-    return gpg_error (GPG_ERR_UNSUPPORTED_ALGORITHM);
-
-  if (parm_off && parm_len && parm_type == TYPE_OBJECT_ID)
-    parm_oid = ksba_oid_to_str (der+parm_off, parm_len);
-  else if (parm_off && parm_len)
-    {
-      parmder = der + parm_off;
-      parmderlen = parm_len;
-    }
-
-  der += nread;
-  derlen -= nread;
-
-  if (is_bitstr)
-    { /* Funny: X.509 defines the signature value as a bit string but
-         CMS as an octet string - for ease of implementation we always
-         allow both */
-      if (!derlen)
-        {
-          xfree (parm_oid);
-          return gpg_error (GPG_ERR_INV_KEYINFO);
-        }
-      c = *der++; derlen--;
-      if (c)
-        fprintf (stderr, "warning: number of unused bits is not zero\n");
-    }
-
-  /* fixme: we should calculate the initial length form the size of the
-     sequence, so that we don't need a realloc later */
-  init_stringbuf (&sb, 100);
-  put_stringbuf (&sb, "(10:public-key(");
-
-  /* fixme: we can also use the oidstring here and prefix it with
-     "oid." - this way we can pass more information into Libgcrypt or
-     whatever library is used */
-  put_stringbuf_sexp (&sb, pk_algo_table[algoidx].algo_string);
-
-  /* Insert the curve name for ECC. */
-  if (pk_algo_table[algoidx].pkalgo == PKALGO_ECC && parm_oid)
-    {
-      put_stringbuf (&sb, "(");
-      put_stringbuf_sexp (&sb, "curve");
-      put_stringbuf_sexp (&sb, parm_oid);
-      put_stringbuf (&sb, ")");
-    }
-
-  /* If parameters are given and we have a description for them, parse
-     them. */
-  if (parmder && parmderlen
-      && pk_algo_table[algoidx].parmelem_string
-      && pk_algo_table[algoidx].parmctrl_string)
-    {
-      elem = pk_algo_table[algoidx].parmelem_string;
-      ctrl = pk_algo_table[algoidx].parmctrl_string;
-      for (; *elem; ctrl++, elem++)
-        {
-          int is_int;
-
-          if ( (*ctrl & 0x80) && !elem[1] )
-            {
-              /* Hack to allow reading a raw value.  */
-              is_int = 1;
-              len = parmderlen;
-            }
-          else
-            {
-              if (!parmderlen)
-                {
-                  xfree (parm_oid);
-                  return gpg_error (GPG_ERR_INV_KEYINFO);
-                }
-              c = *parmder++; parmderlen--;
-              if ( c != *ctrl )
-                {
-                  xfree (parm_oid);
-                  return gpg_error (GPG_ERR_UNEXPECTED_TAG);
-                }
-              is_int = c == 0x02;
-              TLV_LENGTH (parmder);
-            }
-          if (is_int && *elem != '-')  /* Take this integer.  */
-            {
-              char tmp[2];
-
-              put_stringbuf (&sb, "(");
-              tmp[0] = *elem; tmp[1] = 0;
-              put_stringbuf_sexp (&sb, tmp);
-              put_stringbuf_mem_sexp (&sb, parmder, len);
-              parmder += len;
-              parmderlen -= len;
-              put_stringbuf (&sb, ")");
-            }
-        }
-    }
-
-
-  /* FIXME: We don't release the stringbuf in case of error
-     better let the macro jump to a label */
-  elem = pk_algo_table[algoidx].elem_string;
-  ctrl = pk_algo_table[algoidx].ctrl_string;
-  for (; *elem; ctrl++, elem++)
-    {
-      int is_int;
-
-      if ( (*ctrl & 0x80) && !elem[1] )
-        {
-          /* Hack to allow reading a raw value.  */
-          is_int = 1;
-          len = derlen;
-        }
-      else
-        {
-          if (!derlen)
-            {
-              xfree (parm_oid);
-              return gpg_error (GPG_ERR_INV_KEYINFO);
-            }
-          c = *der++; derlen--;
-          if ( c != *ctrl )
-            {
-              xfree (parm_oid);
-              return gpg_error (GPG_ERR_UNEXPECTED_TAG);
-            }
-          is_int = c == 0x02;
-          TLV_LENGTH (der);
-        }
-      if (is_int && *elem != '-')  /* Take this integer.  */
-        {
-          char tmp[2];
-
-          put_stringbuf (&sb, "(");
-          tmp[0] = *elem; tmp[1] = 0;
-          put_stringbuf_sexp (&sb, tmp);
-          put_stringbuf_mem_sexp (&sb, der, len);
-          der += len;
-          derlen -= len;
-          put_stringbuf (&sb, ")");
-        }
-    }
-  put_stringbuf (&sb, "))");
-  xfree (parm_oid);
-
-  *r_string = get_stringbuf (&sb);
-  if (!*r_string)
-    return gpg_error (GPG_ERR_ENOMEM);
-
-  return 0;
-}
-
 
 /* Match the algorithm string given in BUF which is of length BUFLEN
    with the known algorithms from our table and returns the table
@@ -1592,17 +1385,24 @@ _ksba_algoinfo_from_sexp (ksba_const_sexp_t sexp,
 
 
 /* Mode 0: work as described under _ksba_sigval_to_sexp
-   mode 1: work as described under _ksba_encval_to_sexp */
+   Mode 1: work as described under _ksba_encval_to_sexp
+   Mode 2: work as described under _ksba_keyinfo_to_sexp
+   */
 static gpg_error_t
 cryptval_to_sexp (int mode, const unsigned char *der, size_t derlen,
                   ksba_sexp_t *r_string)
 {
   gpg_error_t err;
   const struct algo_table_s *algo_table;
+  const char *head;
   int c;
-  size_t nread, off, len;
+  size_t nread, off, len, parm_off, parm_len;
+  int parm_type;
+  char *parm_oid = NULL;
   int algoidx;
   int is_bitstr;
+  const unsigned char *parmder = NULL;
+  size_t parmderlen = 0;
   const unsigned char *ctrl;
   const char *elem;
   struct stringbuf sb;
@@ -1610,14 +1410,34 @@ cryptval_to_sexp (int mode, const unsigned char *der, size_t derlen,
   /* FIXME: The entire function is very similar to keyinfo_to_sexp */
   *r_string = NULL;
 
-  if (!mode)
-    algo_table = sig_algo_table;
-  else
-    algo_table = enc_algo_table;
+  switch (mode)
+    {
+    case 0:
+      algo_table = sig_algo_table;
+      head = "(7:sig-val(";
+      break;
+    case 1:
+      algo_table = enc_algo_table;
+      head = "(7:enc-val(";
+      break;
+    case 2:
+      algo_table = pk_algo_table;
+      head = "(10:public-key(";
 
+      /* check the outer sequence */
+      if (!derlen)
+        return gpg_error (GPG_ERR_INV_KEYINFO);
+      c = *der++; derlen--;
+      if ( c != 0x30 )
+        return gpg_error (GPG_ERR_UNEXPECTED_TAG); /* not a SEQUENCE */
+      TLV_LENGTH(der);
+      break;
+    default:
+      return gpg_error (GPG_ERR_INV_KEYINFO);
+    }
 
   err = get_algorithm (1, der, derlen, &nread, &off, &len, &is_bitstr,
-                       NULL, NULL, NULL);
+                       &parm_off, &parm_len, &parm_type);
   if (err)
     return err;
 
@@ -1632,6 +1452,14 @@ cryptval_to_sexp (int mode, const unsigned char *der, size_t derlen,
     return gpg_error (GPG_ERR_UNKNOWN_ALGORITHM);
   if (!algo_table[algoidx].supported)
     return gpg_error (GPG_ERR_UNSUPPORTED_ALGORITHM);
+
+  if (parm_off && parm_len && parm_type == TYPE_OBJECT_ID)
+    parm_oid = ksba_oid_to_str (der+parm_off, parm_len);
+  else if (parm_off && parm_len)
+    {
+      parmder = der + parm_off;
+      parmderlen = parm_len;
+    }
 
   der += nread;
   derlen -= nread;
@@ -1650,8 +1478,70 @@ cryptval_to_sexp (int mode, const unsigned char *der, size_t derlen,
   /* fixme: we should calculate the initial length form the size of the
      sequence, so that we don't neen a realloc later */
   init_stringbuf (&sb, 100);
-  put_stringbuf (&sb, mode? "(7:enc-val(":"(7:sig-val(");
+  put_stringbuf (&sb, head);
+
+  /* fixme: in mode 2 we can also use the oidstring here and prefix it
+     with "oid." - this way we can pass more information into Libgcrypt or
+     whatever library is used */
   put_stringbuf_sexp (&sb, algo_table[algoidx].algo_string);
+
+  /* Insert the curve name for ECC. */
+  if (algo_table[algoidx].pkalgo == PKALGO_ECC && parm_oid)
+    {
+      put_stringbuf (&sb, "(");
+      put_stringbuf_sexp (&sb, "curve");
+      put_stringbuf_sexp (&sb, parm_oid);
+      put_stringbuf (&sb, ")");
+    }
+
+  /* If parameters are given and we have a description for them, parse
+     them. */
+  if (parmder && parmderlen
+      && algo_table[algoidx].parmelem_string
+      && algo_table[algoidx].parmctrl_string)
+    {
+      elem = algo_table[algoidx].parmelem_string;
+      ctrl = algo_table[algoidx].parmctrl_string;
+      for (; *elem; ctrl++, elem++)
+        {
+          int is_int;
+
+          if ( (*ctrl & 0x80) && !elem[1] )
+            {
+              /* Hack to allow reading a raw value.  */
+              is_int = 1;
+              len = parmderlen;
+            }
+          else
+            {
+              if (!parmderlen)
+                {
+                  xfree (parm_oid);
+                  return gpg_error (GPG_ERR_INV_KEYINFO);
+                }
+              c = *parmder++; parmderlen--;
+              if ( c != *ctrl )
+                {
+                  xfree (parm_oid);
+                  return gpg_error (GPG_ERR_UNEXPECTED_TAG);
+                }
+              is_int = c == 0x02;
+              TLV_LENGTH (parmder);
+            }
+          if (is_int && *elem != '-')  /* Take this integer.  */
+            {
+              char tmp[2];
+
+              put_stringbuf (&sb, "(");
+              tmp[0] = *elem; tmp[1] = 0;
+              put_stringbuf_sexp (&sb, tmp);
+              put_stringbuf_mem_sexp (&sb, parmder, len);
+              parmder += len;
+              parmderlen -= len;
+              put_stringbuf (&sb, ")");
+            }
+        }
+    }
 
   /* FIXME: We don't release the stringbuf in case of error
      better let the macro jump to a label */
@@ -1669,10 +1559,16 @@ cryptval_to_sexp (int mode, const unsigned char *der, size_t derlen,
       else
         {
           if (!derlen)
-            return gpg_error (GPG_ERR_INV_KEYINFO);
+            {
+              xfree (parm_oid);
+              return gpg_error (GPG_ERR_INV_KEYINFO);
+            }
           c = *der++; derlen--;
           if ( c != *ctrl )
-            return gpg_error (GPG_ERR_UNEXPECTED_TAG);
+            {
+              xfree (parm_oid);
+              return gpg_error (GPG_ERR_UNEXPECTED_TAG);
+            }
           is_int = c == 0x02;
           TLV_LENGTH (der);
         }
@@ -1690,6 +1586,7 @@ cryptval_to_sexp (int mode, const unsigned char *der, size_t derlen,
         }
     }
   put_stringbuf (&sb, ")");
+  xfree (parm_oid);
   if (!mode && algo_table[algoidx].digest_string)
     {
       /* Insert the hash algorithm if included in the OID.  */
@@ -1763,4 +1660,27 @@ _ksba_encval_to_sexp (const unsigned char *der, size_t derlen,
                       ksba_sexp_t *r_string)
 {
   return cryptval_to_sexp (1, der, derlen, r_string);
+}
+
+
+/* Assume that der is a buffer of length DERLEN with a DER encoded
+ Asn.1 structure like this:
+
+  keyInfo ::= SEQUENCE {
+                 SEQUENCE {
+                    algorithm    OBJECT IDENTIFIER,
+                    parameters   ANY DEFINED BY algorithm OPTIONAL }
+                 publicKey  BIT STRING }
+
+  The function parses this structure and create a SEXP suitable to be
+  used as a public key in Libgcrypt.  The S-Exp will be returned in a
+  string which the caller must free.
+
+  We don't pass an ASN.1 node here but a plain memory block.  */
+
+gpg_error_t
+_ksba_keyinfo_to_sexp (const unsigned char *der, size_t derlen,
+                       ksba_sexp_t *r_string)
+{
+  return cryptval_to_sexp (2, der, derlen, r_string);
 }
