@@ -102,6 +102,26 @@ static const struct algo_table_s pk_algo_table[] = {
   {NULL}
 };
 
+static const struct algo_table_s privkey_algo_table[] = {
+
+  { /* iso.member-body.us.rsadsi.pkcs.pkcs-1.1 */
+    "1.2.840.113549.1.1.1", /* rsaEncryption (RSAES-PKCA1-v1.5) */
+    "\x2a\x86\x48\x86\xf7\x0d\x01\x01\x01", 9,
+    1, PKALGO_RSA, "rsa", "-_nedqp__u", "\x30\x02\x02\x02\x02\x02\x02\x02\x02\x02" },
+
+  { /* iso.member-body.us.x9-57.x9cm.1 */
+    "1.2.840.10040.4.1", /*  dsa */
+    "\x2a\x86\x48\xce\x38\x04\x01", 7,
+    1, PKALGO_DSA, "dsa", "x", "\x02", "-pqg", "\x30\x02\x02\x02" },
+
+  { /* iso.member-body.us.ansi-x9-62.2.1 */
+    "1.2.840.10045.2.1", /*  ecPublicKey */
+    "\x2a\x86\x48\xce\x3d\x02\x01", 7,
+    1, PKALGO_ECC, "ecc", "-_d", "\x30\x02\x04", "-_-_p-ab_gn", "\x30\x02\x30\x06\x02\x30\x04\x04\x03\x04\x02" },
+
+  {NULL}
+};
+
 
 static const struct algo_table_s sig_algo_table[] = {
   {  /* iso.member-body.us.rsadsi.pkcs.pkcs-1.5 */
@@ -1131,6 +1151,7 @@ _ksba_algoinfo_from_sexp (ksba_const_sexp_t sexp,
 /* Mode 0: work as described under _ksba_sigval_to_sexp
    Mode 1: work as described under _ksba_encval_to_sexp
    Mode 2: work as described under _ksba_keyinfo_to_sexp
+   Mode 3: work as described under _ksba_privkey_to_sexp
    */
 static gpg_error_t
 cryptval_to_sexp (int mode, const unsigned char *der, size_t derlen,
@@ -1175,6 +1196,26 @@ cryptval_to_sexp (int mode, const unsigned char *der, size_t derlen,
       if ( c != 0x30 )
         return gpg_error (GPG_ERR_UNEXPECTED_TAG); /* not a SEQUENCE */
       TLV_LENGTH(der);
+      break;
+    case 3:
+      algo_table = privkey_algo_table;
+      head = "(11:private-key(";
+
+      /* check the outer sequence */
+      if (!derlen)
+        return gpg_error (GPG_ERR_INV_KEYINFO);
+      c = *der++; derlen--;
+      if ( c != 0x30 )
+        return gpg_error (GPG_ERR_UNEXPECTED_TAG); /* not a SEQUENCE */
+      TLV_LENGTH(der);
+
+      /* skip version field */
+      c = *der++; derlen--;
+      if ( c != 0x02 )
+        return gpg_error (GPG_ERR_UNEXPECTED_TAG); /* not a SEQUENCE */
+      TLV_LENGTH(der);
+      der += len;
+      derlen -= len;
       break;
     default:
       return gpg_error (GPG_ERR_INV_KEYINFO);
@@ -1270,6 +1311,7 @@ cryptval_to_sexp (int mode, const unsigned char *der, size_t derlen,
                   return gpg_error (GPG_ERR_UNEXPECTED_TAG);
                 }
               is_int = c == 0x02;
+              is_int |= c == 0x04;
               TLV_LENGTH (parmder);
             }
           if (is_int && *elem != '-')  /* Take this integer.  */
@@ -1314,6 +1356,7 @@ cryptval_to_sexp (int mode, const unsigned char *der, size_t derlen,
               return gpg_error (GPG_ERR_UNEXPECTED_TAG);
             }
           is_int = c == 0x02;
+          is_int |= c == 0x04;
           TLV_LENGTH (der);
         }
       if (is_int && *elem != '-')
@@ -1427,4 +1470,11 @@ _ksba_keyinfo_to_sexp (const unsigned char *der, size_t derlen,
                        ksba_sexp_t *r_string)
 {
   return cryptval_to_sexp (2, der, derlen, r_string);
+}
+
+gpg_error_t
+_ksba_privkey_to_sexp (const unsigned char *der, size_t derlen,
+                                ksba_sexp_t *r_string)
+{
+  return cryptval_to_sexp (3, der, derlen, r_string);
 }
