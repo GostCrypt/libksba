@@ -194,3 +194,8 @@ EXPORTS
       ksba_certreq_set_issuer         @149
       ksba_certreq_set_validity       @150
       ksba_certreq_set_siginfo        @151
+
+      ksba_priv_key_new               @152
+      ksba_priv_key_release           @153
+      ksba_priv_key_parse_der         @154
+      ksba_priv_key_get_private_key   @155

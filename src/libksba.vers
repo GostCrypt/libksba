@@ -95,6 +95,9 @@ KSBA_0.9 {
 
     ksba_oid_from_str; ksba_oid_to_str;
 
+    ksba_priv_key_new; ksba_priv_key_release;
+    ksba_priv_key_parse_der; ksba_priv_key_get_private_key;
+
     ksba_dn_der2str; ksba_dn_str2der; ksba_dn_teststr;
 
     ksba_reader_clear; ksba_reader_error; ksba_reader_new;

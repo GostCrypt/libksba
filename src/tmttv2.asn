@@ -392,7 +392,15 @@ CertificationRequestInfo ::= SEQUENCE {
 }
 
 
+-- PKCS-8
+PrivateKeyInfo ::= SEQUENCE {
+  version                   Version,
+  privateKeyAlgorithm       AlgorithmIdentifier,
+  privateKey                PrivateKey,
+  attributes                [0] IMPLICIT Attributes OPTIONAL
+}
 
+PrivateKey ::= OCTET STRING
 
 --
 -------------------------

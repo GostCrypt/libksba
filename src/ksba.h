@@ -217,6 +217,8 @@ typedef unsigned char *KsbaSexp _KSBA_DEPRECATED;
 typedef const unsigned char *ksba_const_sexp_t;
 typedef const unsigned char *KsbaConstSexp _KSBA_DEPRECATED;
 
+struct ksba_priv_key_s;
+typedef struct ksba_priv_key_s *ksba_priv_key_t;
 
 /*-- cert.c --*/
 gpg_error_t ksba_cert_new (ksba_cert_t *acert);
@@ -445,6 +447,12 @@ gpg_error_t ksba_certreq_set_validity (ksba_certreq_t cr, int what,
 gpg_error_t ksba_certreq_set_siginfo (ksba_certreq_t cr,
                                       ksba_const_sexp_t siginfo);
 
+
+/*-- privkey.c --*/
+gpg_error_t ksba_priv_key_new (ksba_priv_key_t *r_priv_key);
+void ksba_priv_key_release (ksba_priv_key_t priv_key);
+gpg_error_t ksba_priv_key_parse_der (ksba_priv_key_t priv_key, ksba_reader_t reader);
+ksba_sexp_t ksba_priv_key_get_private_key (ksba_priv_key_t priv_key);
 
 
 /*-- reader.c --*/

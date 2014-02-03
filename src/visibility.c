@@ -930,6 +930,36 @@ ksba_certreq_set_siginfo (ksba_certreq_t cr, ksba_const_sexp_t siginfo)
 }
 
 
+/*-- privkey.c --*/
+gpg_error_t
+ksba_priv_key_new (ksba_priv_key_t *r_priv_key)
+{
+  return _ksba_priv_key_new (r_priv_key);
+}
+
+
+void
+ksba_priv_key_release (ksba_priv_key_t priv_key)
+{
+  return _ksba_priv_key_release (priv_key);
+}
+
+
+
+gpg_error_t
+ksba_priv_key_parse_der (ksba_priv_key_t priv_key, ksba_reader_t reader)
+{
+  return _ksba_priv_key_parse_der (priv_key, reader);
+}
+
+
+ksba_sexp_t
+ksba_priv_key_get_private_key (ksba_priv_key_t priv_key)
+{
+  return _ksba_priv_key_get_private_key (priv_key);
+}
+
+
 /*-- reader.c --*/
 gpg_error_t
 ksba_reader_new (ksba_reader_t *r_r)

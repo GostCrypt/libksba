@@ -162,6 +162,11 @@
 #define ksba_oid_from_str                  _ksba_oid_from_str
 #define ksba_oid_to_str                    _ksba_oid_to_str
 
+#define ksba_priv_key_new                  _ksba_priv_key_new
+#define ksba_priv_key_release              _ksba_priv_key_release
+#define ksba_priv_key_parse_der            _ksba_priv_key_parse_der
+#define ksba_priv_key_get_private_key      _ksba_priv_key_get_private_key
+
 #define ksba_dn_der2str                    _ksba_dn_der2str
 #define ksba_dn_str2der                    _ksba_dn_str2der
 #define ksba_dn_teststr                    _ksba_dn_teststr
@@ -356,6 +361,11 @@ int ksba_asn_delete_structure (void *dummy);
 #undef ksba_oid_from_str
 #undef ksba_oid_to_str
 
+#undef ksba_priv_key_new
+#undef ksba_priv_key_release
+#undef ksba_priv_key_parse_der
+#undef ksba_priv_key_get_private_key
+
 #undef ksba_dn_der2str
 #undef ksba_dn_str2der
 #undef ksba_dn_teststr
@@ -518,6 +528,11 @@ MARK_VISIBLE (ksba_ocsp_get_extension)
 
 MARK_VISIBLE (ksba_oid_from_str)
 MARK_VISIBLE (ksba_oid_to_str)
+
+MARK_VISIBLE (ksba_priv_key_new)
+MARK_VISIBLE (ksba_priv_key_release)
+MARK_VISIBLE (ksba_priv_key_parse_der)
+MARK_VISIBLE (ksba_priv_key_get_private_key)
 
 MARK_VISIBLE (ksba_dn_der2str)
 MARK_VISIBLE (ksba_dn_str2der)

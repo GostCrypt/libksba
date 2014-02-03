@@ -102,6 +102,7 @@ libksba_la_SOURCES = \
 	cms.c cms.h cms-parser.c \
 	crl.c crl.h \
 	certreq.c certreq.h \
+	privkey.c privkey.h \
 	ocsp.c ocsp.h \
 	keyinfo.c keyinfo.h \
 	oid.c name.c dn.c time.c convert.h \

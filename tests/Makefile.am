@@ -45,7 +45,7 @@ AM_CFLAGS = $(GPG_ERROR_CFLAGS)
 AM_LDFLAGS = -no-install
 
 noinst_HEADERS = t-common.h
-noinst_PROGRAMS = $(TESTS) t-cms-parser t-crl-parser t-dnparser t-ocsp
+noinst_PROGRAMS = $(TESTS) t-cms-parser t-crl-parser t-dnparser t-ocsp t-privkey
 LDADD = ../src/libksba.la $(GPG_ERROR_LIBS)
 
 t_ocsp_SOURCES = t-ocsp.c sha1.c
