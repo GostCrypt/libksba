@@ -938,7 +938,7 @@ read_extensions (ksba_cert_t cert)
                                "Certificate.tbsCertificate.extensions..");
   for (count=0, n=start; n; n = n->right)
     count++;
-  if (!count)
+  if (!count || start->off == -1)
     {
       cert->cache.n_extns = 0;
       cert->cache.extns_valid = 1;
