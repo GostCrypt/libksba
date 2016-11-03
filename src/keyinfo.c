@@ -300,6 +300,10 @@ static const struct algo_table_s enc_algo_table[] = {
     "1.2.840.113549.1.1.1", /* rsaEncryption (RSAES-PKCA1-v1.5) */
     "\x2A\x86\x48\x86\xF7\x0D\x01\x01\x01", 9,
     1, PKALGO_RSA, "rsa", "a", "\x82" },
+  { /* iso.member-body.ru.rans.cryptopro.gostR3410-2001 */
+    "1.2.643.2.2.19",
+    "\x2a\x85\x03\x02\x02\x13", 6,
+    1, PKALGO_GOST, "gost", "--ab-c--d-CD-ef", "\x30\x30\x04\x04\xa0\x06\xa0\x30\x06\x30\x06\x06\x03\x04\x04", "-CD", "\x30\x06\x06" }, // FIXME: names
   {NULL}
 };
 
@@ -1533,6 +1537,7 @@ cryptval_to_sexp (int mode, const unsigned char *der, size_t derlen,
   for (; *elem; ctrl++, elem++)
     {
       int is_int;
+      int is_oid;
       int is_gost_key;
 
       if ( (*ctrl & 0x80) && !elem[1] )
@@ -1556,6 +1561,8 @@ cryptval_to_sexp (int mode, const unsigned char *der, size_t derlen,
             }
           is_int = c == 0x02;
           is_int |= (c == 0x04 && *elem != 'Q');
+          is_bitstr = c == 0x03;
+          is_oid = c == TYPE_OBJECT_ID;
           is_gost_key = (c == 0x04 && *elem == 'Q');
           TLV_LENGTH (der);
           is_gost_key &= (len == 0x40)||(len == 0x80);
@@ -1564,6 +1571,14 @@ cryptval_to_sexp (int mode, const unsigned char *der, size_t derlen,
         {
           der += len;
           derlen -= len;
+        }
+      else if (is_bitstr)
+        {
+          if (!derlen)
+            return gpg_error (GPG_ERR_INV_KEYINFO);
+          c = *der++; derlen--;
+          if (c)
+            fprintf (stderr, "warning: number of unused bits is not zero\n");
         }
       else if (is_int && *elem == 'G' && len%2 == 0)
         {
@@ -1592,6 +1607,30 @@ cryptval_to_sexp (int mode, const unsigned char *der, size_t derlen,
           tmp[0] = *elem; tmp[1] = 0;
           put_stringbuf_sexp (&sb, tmp);
           put_stringbuf_mem_sexp (&sb, der, len);
+          der += len;
+          derlen -= len;
+          put_stringbuf (&sb, ")");
+        }
+      else if (is_oid && *elem != '-')  /* Take this OID.  */
+        {
+          char tmp[2];
+
+          xfree (parm_oid);
+          parm_oid = ksba_oid_to_str (der, len);
+          if (!parm_oid)
+            return gpg_error (GPG_ERR_INV_KEYINFO);
+
+          put_stringbuf (&sb, "(");
+          if (*elem == 'C')
+            put_stringbuf_sexp (&sb, "curve");
+          else if (*elem == 'D')
+            put_stringbuf_sexp (&sb, "digest");
+          else
+            {
+              tmp[0] = *elem; tmp[1] = 0;
+              put_stringbuf_sexp (&sb, tmp);
+            }
+          put_stringbuf_sexp (&sb, parm_oid);
           der += len;
           derlen -= len;
           put_stringbuf (&sb, ")");
